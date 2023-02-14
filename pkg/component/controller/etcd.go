@@ -37,6 +37,7 @@ import (
 	"github.com/k0sproject/k0s/pkg/certificate"
 	"github.com/k0sproject/k0s/pkg/component/manager"
 	"github.com/k0sproject/k0s/pkg/component/prober"
+	etcdhealth "github.com/k0sproject/k0s/pkg/component/status/etcd"
 	"github.com/k0sproject/k0s/pkg/constant"
 	"github.com/k0sproject/k0s/pkg/etcd"
 	"github.com/k0sproject/k0s/pkg/supervisor"
@@ -55,6 +56,7 @@ type Etcd struct {
 	uid        int
 	gid        int
 	ctx        context.Context
+	health     *etcdhealth.HealthCheck
 	*prober.EventEmitter
 }
 
@@ -228,6 +230,12 @@ func (e *Etcd) Start(ctx context.Context) error {
 
 	logrus.Debugf("starting etcd with args: %v", args)
 
+	e.health = etcdhealth.NewHealthCheck(e.Config, e.K0sVars)
+	if err != nil {
+		e.EmitWithPayload("Error starting etcd health check", err)
+		logrus.Errorf("Error starting etcd health check: %v", err)
+	}
+
 	e.supervisor = supervisor.Supervisor{
 		Name:          "etcd",
 		BinPath:       assets.BinPath("etcd", e.K0sVars.BinDir),
@@ -244,6 +252,7 @@ func (e *Etcd) Start(ctx context.Context) error {
 
 // Stop stops etcd
 func (e *Etcd) Stop() error {
+	e.health.Stop()
 	err := e.supervisor.Stop()
 	if err != nil {
 		e.EmitWithPayload("failed to stop etcd", err)
@@ -353,4 +362,15 @@ func chown(name string, uid int, gid int) error {
 		return nil
 	}
 	return os.Chown(name, uid, gid)
+}
+
+func (e *Etcd) Healthy() error {
+	if e.Config.IsExternalClusterUsed() {
+		return fmt.Errorf("etcd is external, health check is not performed")
+	}
+	if e.health == nil {
+		return fmt.Errorf("etcd health check not initialized.")
+	}
+
+	return e.health.Healthy()
 }
