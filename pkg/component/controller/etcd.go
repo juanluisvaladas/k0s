@@ -36,6 +36,7 @@ import (
 	"github.com/k0sproject/k0s/pkg/assets"
 	"github.com/k0sproject/k0s/pkg/certificate"
 	"github.com/k0sproject/k0s/pkg/component/manager"
+	"github.com/k0sproject/k0s/pkg/component/prober"
 	"github.com/k0sproject/k0s/pkg/constant"
 	"github.com/k0sproject/k0s/pkg/etcd"
 	"github.com/k0sproject/k0s/pkg/supervisor"
@@ -54,6 +55,7 @@ type Etcd struct {
 	uid        int
 	gid        int
 	ctx        context.Context
+	*prober.EventEmitter
 }
 
 var _ manager.Component = (*Etcd)(nil)
@@ -64,31 +66,37 @@ func (e *Etcd) Init(_ context.Context) error {
 	var err error
 
 	if err = detectUnsupportedEtcdArch(); err != nil {
+		e.EmitWithPayload("missing environment variable", err)
 		logrus.Error(fmt.Errorf("missing environment variable: %w", err))
 		return err
 	}
 
 	e.uid, err = users.GetUID(constant.EtcdUser)
 	if err != nil {
+		e.EmitWithPayload("error getting UID for etcd user", err)
 		logrus.Warning(fmt.Errorf("running etcd as root: %w", err))
 	}
 
 	err = dir.Init(e.K0sVars.EtcdDataDir, constant.EtcdDataDirMode) // https://docs.datadoghq.com/security_monitoring/default_rules/cis-kubernetes-1.5.1-1.1.11/
 	if err != nil {
-		return fmt.Errorf("failed to create %s: %w", e.K0sVars.EtcdDataDir, err)
+		e.EmitWithPayload(fmt.Sprintf("Failed to create data dir %s", e.K0sVars.EtcdDataDir), err)
+		return fmt.Errorf("failed to create data dir %s: %w", e.K0sVars.EtcdDataDir, err)
 	}
 
 	err = dir.Init(e.K0sVars.EtcdCertDir, constant.EtcdCertDirMode) // https://docs.datadoghq.com/security_monitoring/default_rules/cis-kubernetes-1.5.1-4.1.7/
 	if err != nil {
-		return fmt.Errorf("failed to create etcd cert dir: %w", err)
+		e.EmitWithPayload(fmt.Sprintf("Failed to create cert dir %s", e.K0sVars.EtcdDataDir), err)
+		return fmt.Errorf("failed to create etcd cert dir %s: %w", e.K0sVars.EtcdDataDir, err)
 	}
 
 	for _, f := range []string{e.K0sVars.EtcdDataDir, e.K0sVars.EtcdCertDir} {
 		err = chown(f, e.uid, e.gid)
 		if err != nil && os.Geteuid() == 0 {
+			e.EmitWithPayload(fmt.Sprintf("Failed to chown %s", f), err)
 			return err
 		}
 	}
+	e.Emit("Successfully initialized etcd component")
 	return assets.Stage(e.K0sVars.BinDir, "etcd", constant.BinDirMode)
 }
 
@@ -184,6 +192,7 @@ func (e *Etcd) Start(ctx context.Context) error {
 	} else if e.JoinClient != nil {
 		initialCluster, err := e.syncEtcdConfig(peerURL, etcdCaCert, etcdCaCertKey)
 		if err != nil {
+			e.EmitWithPayload("failed to sync etcd config", err)
 			return fmt.Errorf("failed to sync etcd config: %w", err)
 		}
 		args["--initial-cluster"] = strings.Join(initialCluster, ",")
@@ -191,6 +200,7 @@ func (e *Etcd) Start(ctx context.Context) error {
 	}
 
 	if err := e.setupCerts(ctx); err != nil {
+		e.EmitWithPayload("failed to create etcd certs", err)
 		return fmt.Errorf("failed to create etcd certs: %w", err)
 	}
 
@@ -234,7 +244,11 @@ func (e *Etcd) Start(ctx context.Context) error {
 
 // Stop stops etcd
 func (e *Etcd) Stop() error {
-	return e.supervisor.Stop()
+	err := e.supervisor.Stop()
+	if err != nil {
+		e.EmitWithPayload("failed to stop etcd", err)
+	}
+	return err
 }
 
 func (e *Etcd) setupCerts(ctx context.Context) error {

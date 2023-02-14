@@ -92,7 +92,7 @@ func (k *Konnectivity) Init(_ context.Context) error {
 		return fmt.Errorf("failed to stage konnectivity-server binary %v", err)
 
 	}
-	defer k.Emit("succesfully initialized konnectivity component")
+	defer k.Emit("successfully initialized konnectivity component")
 	return nil
 }
 

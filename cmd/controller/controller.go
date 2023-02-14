@@ -179,11 +179,12 @@ func (c *command) start(ctx context.Context) error {
 		}
 	case v1beta1.EtcdStorageType:
 		storageBackend = &controller.Etcd{
-			CertManager: certificateManager,
-			Config:      c.NodeConfig.Spec.Storage.Etcd,
-			JoinClient:  joinClient,
-			K0sVars:     c.K0sVars,
-			LogLevel:    c.Logging["etcd"],
+			CertManager:  certificateManager,
+			Config:       c.NodeConfig.Spec.Storage.Etcd,
+			JoinClient:   joinClient,
+			K0sVars:      c.K0sVars,
+			LogLevel:     c.Logging["etcd"],
+			EventEmitter: prober.NewEventEmitter(),
 		}
 	default:
 		return fmt.Errorf("invalid storage type: %s", c.NodeConfig.Spec.Storage.Type)
