@@ -170,6 +170,18 @@ func WaitForDeployment(ctx context.Context, kc *kubernetes.Clientset, name, name
 		})
 }
 
+// WaitForStatefulSet waits for the StatefulSet with the given name to become
+// available as long as the given context isn't canceled.
+func WaitForStatefulSet(ctx context.Context, kc *kubernetes.Clientset, name, namespace string) error {
+	return watch.StatefulSet(kc.AppsV1().StatefulSets(namespace)).
+		WithObjectName(name).
+		WithErrorCallback(RetryWatchErrors(logrus.Infof)).
+		Until(ctx, func(ss *appsv1.StatefulSet) (bool, error) {
+			return ss.Status.ReadyReplicas == *ss.Spec.Replicas, nil
+
+		})
+}
+
 func WaitForDefaultStorageClass(ctx context.Context, kc *kubernetes.Clientset) error {
 	return Poll(ctx, waitForDefaultStorageClass(kc))
 }
