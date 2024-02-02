@@ -97,6 +97,7 @@ require (
 	github.com/Masterminds/semver v1.5.0 // indirect
 	github.com/Masterminds/sprig/v3 v3.2.3 // indirect
 	github.com/Masterminds/squirrel v1.5.4 // indirect
+	github.com/Masterminds/vcs v1.13.3 // indirect
 	github.com/NYTimes/gziphandler v1.1.1 // indirect
 	github.com/antlr/antlr4/runtime/Go/antlr/v4 v4.0.0-20230305170008-8188dc5388df // indirect
 	github.com/apparentlymart/go-textseg/v15 v15.0.0 // indirect
@@ -152,6 +153,7 @@ require (
 	github.com/go-playground/universal-translator v0.18.1 // indirect
 	github.com/gobwas/glob v0.2.3 // indirect
 	github.com/godbus/dbus/v5 v5.1.0 // indirect
+	github.com/gofrs/flock v0.8.1 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang-jwt/jwt/v4 v4.5.0 // indirect
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
@@ -291,6 +293,7 @@ require (
 
 // Replacements duplicated from upstream Kubernetes
 replace (
+	helm.sh/helm/v3 => github.com/juanluisvaladas/helm/v3 v3.0.0-20240202161126-965d2916670b
 	// https://github.com/kubernetes/kubernetes/blob/v1.29.1/go.mod#L251-L282
 	k8s.io/api => k8s.io/api v0.29.1
 	k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.29.1
