@@ -21,9 +21,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"net"
+	"os/exec"
 	"path/filepath"
 	"slices"
+	"strconv"
+	"strings"
 	"syscall"
 	"text/template"
 	"time"
@@ -32,6 +36,7 @@ import (
 	"github.com/k0sproject/k0s/internal/pkg/users"
 	k0sAPI "github.com/k0sproject/k0s/pkg/apis/k0s/v1beta1"
 	"github.com/k0sproject/k0s/pkg/assets"
+	"github.com/k0sproject/k0s/pkg/component/controller/cplb/tcpproxy"
 	"github.com/k0sproject/k0s/pkg/config"
 	"github.com/k0sproject/k0s/pkg/constant"
 	"github.com/k0sproject/k0s/pkg/supervisor"
@@ -55,6 +60,7 @@ type Keepalived struct {
 	reconciler       *CPLBReconciler
 	updateCh         chan struct{}
 	reconcilerDone   chan struct{}
+	proxy            tcpproxy.Proxy
 }
 
 // Init extracts the needed binaries and creates the directories
@@ -83,13 +89,14 @@ func (k *Keepalived) Start(_ context.Context) error {
 		return nil
 	}
 
-	if len(k.Config.VRRPInstances) > 0 {
+	// We only need the dummy interface when using IPVS.
+	if len(k.Config.VirtualServers) > 0 {
 		if err := k.configureDummy(); err != nil {
 			return fmt.Errorf("failed to configure dummy interface: %w", err)
 		}
 	}
 
-	if len(k.Config.VirtualServers) > 0 {
+	if len(k.Config.VRRPInstances) > 0 || len(k.Config.VirtualServers) > 0 {
 		k.log.Info("Starting CPLB reconciler")
 		updateCh := make(chan struct{}, 1)
 		k.reconciler = NewCPLBReconciler(k.KubeConfigPath, updateCh)
@@ -140,7 +147,14 @@ func (k *Keepalived) Start(_ context.Context) error {
 		k.reconcilerDone = reconcilerDone
 		go func() {
 			defer close(reconcilerDone)
-			k.watchReconcilerUpdates()
+			if len(k.Config.VirtualServers) > 0 {
+				k.watchReconcilerUpdatesKeepalived()
+			} else {
+
+				if err := k.watchReconcilerUpdatesReverseProxy(); err != nil {
+					k.log.Errorf("failed to watch reconciler updates: %v", err)
+				}
+			}
 		}()
 	}
 	return k.supervisor.Supervise()
@@ -149,30 +163,33 @@ func (k *Keepalived) Start(_ context.Context) error {
 // Stops keepalived and cleans up the virtual IPs. This is done so that if the
 // k0s controller is stopped, it can still reach the other APIservers on the VIP
 func (k *Keepalived) Stop() error {
-	if k.reconciler != nil {
-		k.log.Infof("Stopping cplb-reconciler")
-		k.reconciler.Stop()
-		close(k.updateCh)
-		<-k.reconcilerDone
-	}
-
-	k.log.Infof("Stopping keepalived")
-	k.supervisor.Stop()
-
-	k.log.Infof("Deleting dummy interface")
-	link, err := netlink.LinkByName(dummyLinkName)
-	if err != nil {
-		if errors.As(err, &netlink.LinkNotFoundError{}) {
-			return nil
+	/*
+		if k.reconciler != nil {
+			k.log.Infof("Stopping cplb-reconciler")
+			k.reconciler.Stop()
+			close(k.updateCh)
+			<-k.reconcilerDone
 		}
-		k.log.Errorf("failed to get link by name %s. Attempting to delete it anyway: %v", dummyLinkName, err)
-		link = &netlink.Dummy{
-			LinkAttrs: netlink.LinkAttrs{
-				Name: dummyLinkName,
-			},
+
+		k.log.Infof("Stopping keepalived")
+		k.supervisor.Stop()
+
+		k.log.Infof("Deleting dummy interface")
+		link, err := netlink.LinkByName(dummyLinkName)
+		if err != nil {
+			if errors.As(err, &netlink.LinkNotFoundError{}) {
+				return nil
+			}
+			k.log.Errorf("failed to get link by name %s. Attempting to delete it anyway: %v", dummyLinkName, err)
+			link = &netlink.Dummy{
+				LinkAttrs: netlink.LinkAttrs{
+					Name: dummyLinkName,
+				},
+			}
 		}
-	}
-	return netlink.LinkDel(link)
+		return netlink.LinkDel(link)
+	*/
+	return nil
 }
 
 // configureDummy creates the dummy interface and sets the virtual IPs on it.
@@ -241,7 +258,7 @@ func (k *Keepalived) ensureLinkAddresses(linkName string, expectedAddresses []st
 	}
 
 	// Remove unexpected addresses
-	for i := range linkAddrs {
+	for i := 0; i < len(linkAddrs); i++ {
 		strAddr := strAddrs[i]
 		linkAddr := linkAddrs[i]
 		if !slices.Contains(expectedAddresses, strAddrs[i]) {
@@ -321,7 +338,89 @@ func (k *Keepalived) generateKeepalivedTemplate() error {
 	return nil
 }
 
-func (k *Keepalived) watchReconcilerUpdates() {
+func (k *Keepalived) watchReconcilerUpdatesReverseProxy() error {
+	k.proxy = tcpproxy.Proxy{}
+	// We don't know how long until we get the first update, so initially we
+	// forward everything to localhost
+	fmt.Println("VALADAS: Adding route", fmt.Sprintf(":%d", k.Config.UserSpaceProxyPort), fmt.Sprintf("127.0.0.1:%d", k.APIPort))
+	k.proxy.AddRoute(fmt.Sprintf(":%d", k.Config.UserSpaceProxyPort), tcpproxy.To(fmt.Sprintf("127.0.0.1:%d", k.APIPort)))
+
+	fmt.Println("VALADAS: starting proxy")
+	if err := k.proxy.Start(); err != nil {
+		return fmt.Errorf("failed to start proxy: %w", err)
+	}
+	fmt.Printf("VALADAS: proxy start address %p\n", &k.proxy)
+	fmt.Println("VALADAS: started proxy")
+
+	// Do not create the proxy rules until we have the first update.
+	// This is to prevent that we are forwarding traffic to an apiserver
+	// which issn't work yet
+	fmt.Println("Waiting for updateCh")
+	<-k.updateCh
+	fmt.Println("VALADAS: Adding iptables rules")
+	for _, vrrp := range k.Config.VRRPInstances {
+		for _, vipCIDR := range vrrp.VirtualIPs {
+			vip := strings.Split(vipCIDR, "/")[0]
+			// create iptables rule
+			k.createProxyForwardRules(vip)
+		}
+	}
+	fmt.Println("VALADAS: Added iptables rules")
+	k.setProxyRoutes()
+
+	for range k.updateCh {
+		k.setProxyRoutes()
+	}
+	return nil
+}
+
+func (k *Keepalived) setProxyRoutes() {
+	fmt.Println("VALADAS: got update")
+	routes := []tcpproxy.Target{}
+	for _, addr := range k.reconciler.GetIPs() {
+		fmt.Println("VALADAS: appending route", addr)
+		routes = append(routes, tcpproxy.To(fmt.Sprintf("%s:%d", addr, k.APIPort)))
+	}
+
+	for _, vrrp := range k.Config.VRRPInstances {
+		for _, vipCIDR := range vrrp.VirtualIPs {
+			vip := strings.Split(vipCIDR, "/")[0]
+			k.log.Infof("VALADAS: Updating routes for VIP %s with: %s", vip, routes)
+			k.proxy.SetRoutes(fmt.Sprintf(":%d", k.Config.UserSpaceProxyPort), routes)
+
+			fmt.Printf("VALADAS: proxy setRoutes address %p\n", &k.proxy)
+		}
+	}
+}
+
+func (k *Keepalived) createProxyForwardRules(vip string) {
+	fmt.Println("VALADAS: Adding iptables rule", vip, k.APIPort)
+	commands := [][]string{
+		{
+			"-t", "nat", "-A", "PREROUTING",
+			"-p", "tcp", "-d", vip, "--dport", strconv.Itoa(k.APIPort),
+			"-j", "DNAT", "--to-destination", fmt.Sprintf("127.0.0.1:%d", k.Config.UserSpaceProxyPort),
+		},
+		{
+			"-t", "nat", "-A", "OUTPUT",
+			"-p", "tcp", "-d", vip, "--dport", strconv.Itoa(k.APIPort),
+			"-j", "DNAT", "--to-destination", fmt.Sprintf("127.0.0.1:%d", k.Config.UserSpaceProxyPort),
+		},
+		{
+			"-t", "nat", "-A", "POSTROUTING",
+			"-p", "tcp", "-d", "127.0.0.1", "--dport", strconv.Itoa(k.Config.UserSpaceProxyPort),
+			"-j", "MASQUERADE",
+		},
+	}
+
+	for _, cmdArgs := range commands {
+		cmd := exec.Command("/var/lib/k0s/bin/iptables", cmdArgs...)
+		if err := cmd.Run(); err != nil {
+			log.Fatalf("Failed to execute iptables command: %v", err)
+		}
+	}
+}
+func (k *Keepalived) watchReconcilerUpdatesKeepalived() {
 	// Wait for the supervisor to start keepalived before
 	// watching for endpoint changes
 	process := k.supervisor.GetProcess()
@@ -368,15 +467,15 @@ const dummyLinkName = "dummyvip0"
 var keepalivedConfigTemplate = template.Must(template.New("keepalived").Parse(`
 {{ range $i, $instance := .VRRPInstances }}
 vrrp_instance k0s-vip-{{$i}} {
-    # All servers must have state BACKUP so that when a new server comes up
-    # it doesn't perform a failover. This must be combined with the priority.
+	# All servers must have state BACKUP so that when a new server comes up
+	# it doesn't perform a failover. This must be combined with the priority.
     state BACKUP
-    # Make sure the interface is aligned with your server's network interface.
+    # Make sure the interface is aligned with your server's network interface
     interface {{ .Interface }}
-    # The virtual router ID must be unique to each VRRP instance that you define.
+    # The virtual router ID must be unique to each VRRP instance that you define
     virtual_router_id {{ $instance.VirtualRouterID }}
     # All servers have the same priority so that when a new one comes up we don't
-    # do a failover.
+    # do a failover
     priority 200
 #   advertisement interval, 1 second by default
     advert_int {{ $instance.AdvertIntervalSeconds }}
