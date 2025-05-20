@@ -1,7 +1,7 @@
 FROM debian:bullseye AS builder
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl unzip openssh-client
 
-FROM golang:1.19-bullseye AS builder-tool
+FROM golang:1.24-bullseye AS builder-tool
 COPY . /go/src/tool
 WORKDIR /go/src/tool
 RUN go build -o /tool
