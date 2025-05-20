@@ -59,7 +59,7 @@ networks:
 
 services:
   k0s-lb:
-    image: docker.io/traefik:v3.3.5
+    image: docker.io/traefik:v3.4.0
     container_name: k0s-lb
     hostname: k0s-lb
     networks:
