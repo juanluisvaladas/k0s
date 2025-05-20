@@ -1,0 +1,62 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:base",
+    ":gitSignOff"
+  ],
+  "packageRules": [
+    {
+      "description": "Group all etcd updates (go.mod and Makefile) into a single PR",
+      "matchPackageNames": [
+        "go.etcd.io/etcd/api/v3",
+        "go.etcd.io/etcd/client/pkg/v3",
+        "go.etcd.io/etcd/client/v3",
+        "go.etcd.io/etcd/pkg/v3",
+        "go.etcd.io/etcd/server/v3",
+        "go.etcd.io/etcd/tests/v3",
+        "go.etcd.io/etcd/tools/benchmark/v3",
+        "go.etcd.io/etcd/etcdutl/v3",
+        "etcd-io/etcd"
+      ],
+      "groupName": "etcd dependencies",
+      "groupSlug": "etcd-all"
+    },
+    {
+      "description": "Ensure etcd in Makefile uses github-releases and is enabled",
+      "matchManagers": ["regex"],
+      "matchPackageNames": ["etcd-io/etcd"],
+      "enabled": true
+    },
+    {
+      "description": "Update kine version in Makefile.variables from k3s-io/kine releases",
+      "matchManagers": ["regex"],
+      "matchPackageNames": ["k3s-io/kine"],
+      "enabled": true
+    }
+  ],
+  "regexManagers": [
+    {
+      "description": "Update etcd version in embedded-bins/Makefile.variables",
+      "fileMatch": ["^embedded-bins/Makefile\\.variables$"],
+      "matchStrings": [
+        "etcd_version = (?<currentValue>v?[\\d\\.]+)"
+      ],
+      "depNameTemplate": "etcd-io/etcd",
+      "datasourceTemplate": "github-releases",
+      "versioningTemplate": "semver"
+    },
+    {
+      "description": "Update kine version in embedded-bins/Makefile.variables",
+      "fileMatch": ["^embedded-bins/Makefile\\.variables$"],
+      "matchStrings": [
+        "kine_version = (?<currentValue>v?[\\d\\.]+)"
+      ],
+      "depNameTemplate": "k3s-io/kine",
+      "datasourceTemplate": "github-releases",
+      "versioningTemplate": "semver"
+    }
+  ],
+  "gomod": {
+    "enabled": true
+  }
+}
