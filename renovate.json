@@ -5,6 +5,7 @@
     ":configMigration",
     ":gitSignOff"
   ],
+  "includeForks": true,
   "enabledManagers": [
     "gomod",
     "custom.regex"
