@@ -1,21 +1,26 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
-    "config:base",
+    "config:recommended",
+    ":configMigration",
     ":gitSignOff"
+  ],
+  "enabledManagers": [
+    "gomod",
+    "custom.regex"
   ],
   "packageRules": [
     {
+      "description": "Ignore all Go dependencies by default",
+      "enabled": false,
+      "matchManagers": [
+        "gomod"
+      ]
+    },
+    {
       "description": "Group all etcd updates (go.mod and Makefile) into a single PR",
       "matchPackageNames": [
-        "go.etcd.io/etcd/api/v3",
-        "go.etcd.io/etcd/client/pkg/v3",
-        "go.etcd.io/etcd/client/v3",
-        "go.etcd.io/etcd/pkg/v3",
-        "go.etcd.io/etcd/server/v3",
-        "go.etcd.io/etcd/tests/v3",
-        "go.etcd.io/etcd/tools/benchmark/v3",
-        "go.etcd.io/etcd/etcdutl/v3",
+        "go.etcd.io/etcd/**/v3",
         "etcd-io/etcd"
       ],
       "groupName": "etcd dependencies",
@@ -23,21 +28,16 @@
     },
     {
       "description": "Ensure etcd in Makefile uses github-releases and is enabled",
-      "matchManagers": ["regex"],
+      "matchManagers": ["custom.regex"],
       "matchPackageNames": ["etcd-io/etcd"],
-      "enabled": true
-    },
-    {
-      "description": "Update kine version in Makefile.variables from k3s-io/kine releases",
-      "matchManagers": ["regex"],
-      "matchPackageNames": ["k3s-io/kine"],
       "enabled": true
     }
   ],
-  "regexManagers": [
+  "customManagers": [
     {
+      "customType": "regex",
       "description": "Update etcd version in embedded-bins/Makefile.variables",
-      "fileMatch": ["^embedded-bins/Makefile\\.variables$"],
+      "managerFilePatterns": ["embedded-bins/Makefile.variables"],
       "matchStrings": [
         "etcd_version = (?<currentValue>v?[\\d\\.]+)"
       ],
@@ -46,17 +46,19 @@
       "versioningTemplate": "semver"
     },
     {
-      "description": "Update kine version in embedded-bins/Makefile.variables",
-      "fileMatch": ["^embedded-bins/Makefile\\.variables$"],
+      "customType": "regex",
+      "description": "Update kine versions across the codebase",
+      "managerFilePatterns": [
+        "/(^|/)[Mm]akefile(\\.[^/]+)?$/",
+        "*.go"
+      ],
       "matchStrings": [
-        "kine_version = (?<currentValue>v?[\\d\\.]+)"
+        "kine_version = (?<currentValue>[\\d\\.]+)",
+        "\\bkine/blob/(v?<currentValue>[\\d\\.]+)\\b"
       ],
       "depNameTemplate": "k3s-io/kine",
       "datasourceTemplate": "github-releases",
       "versioningTemplate": "semver"
     }
-  ],
-  "gomod": {
-    "enabled": true
-  }
+  ]
 }
