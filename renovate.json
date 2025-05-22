@@ -5,7 +5,7 @@
     ":configMigration",
     ":gitSignOff"
   ],
-  "includeForks": true,
+  "forkProcessing": "enabled",
   "enabledManagers": [
     "gomod",
     "custom.regex"
@@ -29,9 +29,10 @@
       ],
       "enabled": true,
       "matchPackageNames": [
-        "go.etcd.io/etcd/**/v3",
+        "go.etcd.io/etcd/**",
         "etcd-io/etcd"
       ],
+      "allowedVersions": ">=3",
       "groupName": "etcd dependencies",
       "groupSlug": "etcd-all"
     },
