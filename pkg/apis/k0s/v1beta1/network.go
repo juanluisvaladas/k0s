@@ -91,18 +91,29 @@ func (n *Network) Validate() []error {
 		errors = append(errors, field.NotSupported(field.NewPath("provider"), n.Provider, []string{"kuberouter", "calico", "custom"}))
 	}
 
-	_, _, err := net.ParseCIDR(n.PodCIDR)
+	invalidCIDRs := false
+	podNetIP, _, err := net.ParseCIDR(n.PodCIDR)
 	if err != nil {
 		errors = append(errors, field.Invalid(field.NewPath("podCIDR"), n.PodCIDR, "invalid CIDR address"))
+		invalidCIDRs = true
 	}
 
-	_, _, err = net.ParseCIDR(n.ServiceCIDR)
+	serviceNetIP, _, err := net.ParseCIDR(n.ServiceCIDR)
 	if err != nil {
 		errors = append(errors, field.Invalid(field.NewPath("serviceCIDR"), n.ServiceCIDR, "invalid CIDR address"))
+		invalidCIDRs = true
 	}
 
-	if !govalidator.IsDNSName(n.ClusterDomain) {
-		errors = append(errors, field.Invalid(field.NewPath("clusterDomain"), n.ClusterDomain, "invalid DNS name"))
+	// podCIDR and service CIDR must both be either ipv4 or ipv6, but we should only verify this
+	// if they have a valid IP to begin with because otherwise the error can be confusing
+	if !invalidCIDRs {
+		if (podNetIP.To4() != nil) != (serviceNetIP.To4() != nil) {
+			errors = append(errors, field.Invalid(field.NewPath("podCIDR"), n.PodCIDR, "podCIDR and serviceCIDR must be both IPv4 or IPv6"))
+		}
+
+		if !govalidator.IsDNSName(n.ClusterDomain) {
+			errors = append(errors, field.Invalid(field.NewPath("clusterDomain"), n.ClusterDomain, "invalid DNS name"))
+		}
 	}
 
 	if n.DualStack.Enabled {
@@ -116,6 +127,12 @@ func (n *Network) Validate() []error {
 		_, _, err = net.ParseCIDR(n.DualStack.IPv6ServiceCIDR)
 		if err != nil {
 			errors = append(errors, field.Invalid(field.NewPath("dualStack", "IPv6serviceCIDR"), n.DualStack.IPv6ServiceCIDR, "invalid CIDR address"))
+		}
+		if podNetIP.To4() == nil {
+			errors = append(errors, field.Invalid(field.NewPath("podCIDR"), n.PodCIDR, "if DualStack is enabled, podCIDR must be IPv4"))
+		}
+		if serviceNetIP.To4() == nil {
+			errors = append(errors, field.Invalid(field.NewPath("serviceCIDR"), n.ServiceCIDR, "if DualStack is enabled, serviceCIDR must be IPv4"))
 		}
 	}
 
