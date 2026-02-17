@@ -37,6 +37,13 @@
       ]
     },
     {
+      "description": "Disable python datasource",
+      "enabled": false,
+      "matchDatasources": [
+        "python-version"
+      ]
+    },
+    {
       "description": "Kubernetes",
       "enabled": true,
       "matchPackageNames": [
