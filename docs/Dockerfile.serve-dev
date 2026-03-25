@@ -6,22 +6,24 @@ FROM python:${PYTHON_IMAGE_VERSION} as builder
 ENV PYTHONUNBUFFERED 1
 RUN \
   apk add --no-cache make python3 \
-  && python3 -m venv /mkdocs/venv
+  && python3 -m venv /zensical/venv
 
 # Copy requirements.txt
-COPY ./requirements_pip.txt ./requirements.txt /mkdocs/
+COPY ./requirements_pip.txt ./requirements.txt /zensical/
 
 # Install python dependencies
-ENV VIRTUAL_ENV=/deps/venv PATH=/mkdocs/venv/bin:$PATH
-RUN pip install --disable-pip-version-check -r /mkdocs/requirements_pip.txt \
+ENV VIRTUAL_ENV=/deps/venv PATH=/zensical/venv/bin:$PATH
+RUN pip install --disable-pip-version-check -r /zensical/requirements_pip.txt \
   && pip --version \
-  && pip install --disable-pip-version-check -r /mkdocs/requirements.txt
+  && pip install --disable-pip-version-check -r /zensical/requirements.txt
+
+RUN sed -i 's/writable=True/writable=False/' /zensical/venv/lib/python3.14/site-packages/zensical/main.py
 
 WORKDIR /k0s
 
-# Expose MkDocs development server port
+# Expose zensical development server port
 EXPOSE 8000
 
 # Start development server by default
-ENTRYPOINT ["mkdocs"]
+ENTRYPOINT ["zensical"]
 CMD ["serve", "--dev-addr=0.0.0.0:8000"]

@@ -16,15 +16,15 @@ endif
 DOCKER ?= docker
 TARGET_VERSION ?= latest
 # mkdocs.yml refuses to live in the docs-directory, this is why "cd .." is needed
-# gives: "Error: The 'docs_dir' should not be the parent directory of the config file."
+# gives: "Er The 'docs_dir' should not be the parent directory of the config file."
 # even if docs_dir is "."
-docs: .require-mkdocs cli
-	cd .. && PYTHONPATH=$(CURDIR)/mkdocs_modules K0S_VERSION=$$('$(k0s_binary_path)/$(k0s_binary)' version) mkdocs build --strict
+docs: .require-zensical cli
+	cd .. && PYTHONPATH=$(CURDIR)/zensical_modules K0S_VERSION=$$('$(k0s_binary_path)/$(k0s_binary)' version) zensical build --strict
 
-.PHONY: .require-mkdocs
-.require-mkdocs:
-	@which mkdocs >/dev/null 2>/dev/null || { \
-	  echo 'mkdocs required, use pip install --disable-pip-version-check -r $(CURDIR)/requirements.txt' >&2; \
+.PHONY: .require-zensical
+.require-zensical:
+	@which zensical >/dev/null 2>/dev/null || { \
+	  echo 'zensical required, use pip install --disable-pip-version-check -r $(CURDIR)/requirements.txt' >&2; \
 	  exit 1; \
 	}
 

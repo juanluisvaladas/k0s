@@ -402,9 +402,9 @@ docs-serve-dev: DOCS_DEV_PORT ?= 8000
 docs-serve-dev:
 	$(MAKE) -C docs .docker-image.serve-dev.stamp
 	$(DOCKER) run --rm \
-	  -e PYTHONPATH=/k0s/docs/mkdocs_modules \
+	  -e PYTHONPATH=/k0s/docs/zensical_modules \
 	  -e K0S_VERSION=$(VERSION) \
-	  -v "$(CURDIR):/k0s:ro" \
+	  -v "$(CURDIR):/k0s" \
 	  -p '$(DOCS_DEV_PORT):8000' \
 	  $(DOCKER_RUN_OPTS) k0sdocs.docker-image.serve-dev
 
@@ -412,7 +412,7 @@ spdx.json: syft.yaml go.mod .bins.$(TARGET_OS).stamp
 	$(DOCKER) run --rm \
 	  -v '$(CURDIR)/syft.yaml':/k0s/syft.yaml:ro \
 	  -v '$(CURDIR)/go.mod':/k0s/go.mod:ro \
-	  -v '$(CURDIR)/embedded-bins/staging/$(TARGET_OS)/bin':/k0s/bin:ro \
+	  -v '$(CURDIR)/embedded-bins/staging/$(TARGET_OS)/bin':/k0s/bin \
 	  -w /k0s \
 	  $(DOCKER_RUN_OPTS) docker.io/anchore/syft:v1.42.3 \
 	  --source-name k0s --source-version '$(VERSION)' \
